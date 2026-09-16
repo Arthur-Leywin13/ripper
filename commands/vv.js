@@ -8,33 +8,50 @@ async function streamToBuffer(stream) {
 
 module.exports = {
   name: 'vv',
-  description: 'Révèle un message "vue unique" en réponse',
+  description: 'Télécharge une image ou vidéo (y compris en vue unique)',
+
   async execute({ sock, jid, quotedMessage }) {
     if (!quotedMessage) {
-      return sock.sendMessage(jid, { text: 'Répondez à ce qui devait disparaître, et je le retiendrai pour vous.' })
+      return sock.sendMessage(jid, {
+        text: 'Répondez à une image ou une vidéo (normale ou vue unique).'
+      })
     }
 
-    const viewOnce =
+    // Extraction du message interne si c'est un message en vue unique (v1 ou v2)
+    const innerMessage = 
       quotedMessage.viewOnceMessage?.message ||
       quotedMessage.viewOnceMessageV2?.message ||
-      quotedMessage.viewOnceMessageV2Extension?.message
+      quotedMessage.viewOnceMessageV2Extension?.message ||
+      quotedMessage
 
-    if (!viewOnce) {
-      return sock.sendMessage(jid, { text: 'Ceci n\'était pas destiné à disparaître.' })
+    const media =
+      innerMessage.imageMessage ||
+      innerMessage.videoMessage
+
+    if (!media) {
+      return sock.sendMessage(jid, {
+        text: 'Le message ciblé ne contient pas d\'image ou de vidéo.'
+      })
     }
 
-    const type = viewOnce.imageMessage ? 'image' : viewOnce.videoMessage ? 'video' : null
-    if (!type) {
-      return sock.sendMessage(jid, { text: 'Cette forme m\'échappe encore.' })
+    const type = innerMessage.imageMessage ? 'image' : 'video'
+
+    try {
+      const stream = await downloadContentFromMessage(media, type)
+      const buffer = await streamToBuffer(stream)
+
+      const payload = { [type]: buffer }
+
+      if (media.caption) {
+        payload.caption = media.caption
+      }
+
+      await sock.sendMessage(jid, payload)
+    } catch (err) {
+      console.error('[vv] Erreur téléchargement:', err)
+      await sock.sendMessage(jid, {
+        text: 'Impossible de récupérer ce média.'
+      })
     }
-
-    const media = viewOnce[`${type}Message`]
-    const stream = await downloadContentFromMessage(media, type)
-    const buffer = await streamToBuffer(stream)
-
-    const payload = { [type]: buffer }
-    if (media.caption) payload.caption = media.caption // uniquement si le message original en avait une
-
-    await sock.sendMessage(jid, payload)
   },
 }
