@@ -35,3 +35,4 @@ module.exports = {
   SESSION_IDS:
     process.env.SESSION_IDS || 'main',
 }
+
