@@ -1,9 +1,15 @@
 const sessionManager = require('./lib/sessionManager')
 const webServer = require('./lib/webServer')
 
-sessionManager.bootAll().catch((err) => {
-  console.error('Erreur au démarrage des sessions:', err)
+async function main() {
+  // Le serveur HTTP est démarré une seule fois.
+  await webServer.start()
+
+  // Puis les sessions déclarées/authentifiées sont démarrées.
+  await sessionManager.bootAll()
+}
+
+main().catch((err) => {
+  console.error('Erreur fatale au démarrage:', err)
   process.exit(1)
 })
-
-webServer.start()
