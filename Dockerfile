@@ -14,10 +14,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm cache clean --force && npm install --omit=dev
 
 COPY . .
 
 EXPOSE 3000
 
 CMD ["node", "index.js"]
+
