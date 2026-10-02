@@ -8,33 +8,36 @@ async function streamToBuffer(stream) {
 
 module.exports = {
   name: 'vv',
-  description: 'Télécharge une image ou vidéo (y compris en vue unique)',
+  description: 'Télécharge une image, vidéo ou audio (y compris à vue unique)',
 
-  async execute({ sock, jid, quotedMessage }) {
+  async execute({ sock, jid, quotedMessage, msg }) {
     if (!quotedMessage) {
       return sock.sendMessage(jid, {
-        text: 'Répondez à une image ou une vidéo (normale ou vue unique).'
-      })
+        text: 'Veuillez répondre à un média ou à un message à vue unique.'
+      }, { quoted: msg })
     }
 
-    // Extraction du message interne si c'est un message en vue unique (v1 ou v2)
-    const innerMessage = 
-      quotedMessage.viewOnceMessage?.message ||
-      quotedMessage.viewOnceMessageV2?.message ||
-      quotedMessage.viewOnceMessageV2Extension?.message ||
-      quotedMessage
+    // Décapsulage des conteneurs éphémères et à vue unique
+    let inner = quotedMessage
+    if (inner.ephemeralMessage) inner = inner.ephemeralMessage.message
+    if (inner.viewOnceMessage) inner = inner.viewOnceMessage.message
+    if (inner.viewOnceMessageV2) inner = inner.viewOnceMessageV2.message
+    if (inner.viewOnceMessageV2Extension) inner = inner.viewOnceMessageV2Extension.message
+    if (inner.documentWithCaptionMessage) inner = inner.documentWithCaptionMessage.message
 
-    const media =
-      innerMessage.imageMessage ||
-      innerMessage.videoMessage
+    // Détection du média (Image, Vidéo ou Audio)
+    const media = inner.imageMessage || inner.videoMessage || inner.audioMessage
 
     if (!media) {
       return sock.sendMessage(jid, {
-        text: 'Le message ciblé ne contient pas d\'image ou de vidéo.'
-      })
+        text: 'Le message visé ne contient aucun média compatible (image, vidéo, audio).'
+      }, { quoted: msg })
     }
 
-    const type = innerMessage.imageMessage ? 'image' : 'video'
+    // Détermination du type Baileys
+    let type = 'image'
+    if (inner.videoMessage) type = 'video'
+    if (inner.audioMessage) type = 'audio'
 
     try {
       const stream = await downloadContentFromMessage(media, type)
@@ -42,16 +45,23 @@ module.exports = {
 
       const payload = { [type]: buffer }
 
+      // Gestion de la légende s'il s'agit d'un média visuel
       if (media.caption) {
         payload.caption = media.caption
       }
 
-      await sock.sendMessage(jid, payload)
+      // Si c'est un vocal, préciser la distinction PTT/Audio
+      if (type === 'audio') {
+        payload.mimetype = media.mimetype || 'audio/mp4'
+        payload.ptt = !!media.ptt
+      }
+
+      await sock.sendMessage(jid, payload, { quoted: msg })
     } catch (err) {
-      console.error('[vv] Erreur téléchargement:', err)
+      console.error('[vv] Erreur de téléchargement:', err)
       await sock.sendMessage(jid, {
-        text: 'Impossible de récupérer ce média.'
-      })
+        text: 'Échec du téléchargement du média à vue unique.'
+      }, { quoted: msg })
     }
   },
 }
